@@ -1,0 +1,32 @@
+# Go build output
+/builds/
+*.exe
+*.out
+*.bin
+*.dll
+*.so
+*.dylib
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Editor/IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Dependency directories (if used)
+vendor/
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+
+# Others
+landrop_downloads/
+

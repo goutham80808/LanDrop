@@ -17,9 +17,17 @@ func main() {
 	}
 
 	// Every peer should be discoverable, so we start the listener
-	// for all commands except 'discover' itself.
+	// for all commands except 'discover' and test commands.
 	// We run it in the background so it doesn't block other commands.
-	if len(os.Args) > 1 && os.Args[1] != "discover" {
+	// Skip discovery for chunked commands to avoid port conflicts
+	shouldSkipDiscovery := len(os.Args) > 1 && (
+		os.Args[1] == "discover" || 
+		os.Args[1] == "send-chunked" || 
+		os.Args[1] == "recv-chunked" ||
+		os.Args[1] == "test-quic-send" ||
+		os.Args[1] == "test-quic-recv")
+	
+	if !shouldSkipDiscovery {
 		go p2p.ListenForDiscovery(DefaultPort)
 	}
 
@@ -89,6 +97,53 @@ func main() {
 		fmt.Println("This machine is now discoverable by other peers.")
 		p2p.ReceiveFile(port)
 
+	case "test-quic-send":
+		if len(os.Args) != 3 {
+			fmt.Println("Usage: landrop test-quic-send <peer-address>")
+			return
+		}
+		peerAddr := os.Args[2]
+		err := p2p.SendQUICMessage(peerAddr, "Hello, QUIC!")
+		if err != nil {
+			fmt.Printf("QUIC send failed: %s\n", err)
+		}
+
+	case "test-quic-recv":
+		var port string
+		if len(os.Args) > 2 {
+			port = os.Args[2]
+		} else {
+			port = DefaultPort
+		}
+		err := p2p.ReceiveQUICMessage(port)
+		if err != nil {
+			fmt.Printf("QUIC receive failed: %s\n", err)
+		}
+
+	case "send-chunked":
+		if len(os.Args) != 4 {
+			fmt.Println("Usage: landrop send-chunked <filename> <peer-address>")
+			return
+		}
+		filename := os.Args[2]
+		peerAddr := os.Args[3]
+		err := p2p.SendFileChunked(filename, peerAddr)
+		if err != nil {
+			fmt.Printf("Chunked send failed: %s\n", err)
+		}
+
+	case "recv-chunked":
+		var port string
+		if len(os.Args) > 2 {
+			port = os.Args[2]
+		} else {
+			port = DefaultPort
+		}
+		err := p2p.ReceiveFileChunked(port)
+		if err != nil {
+			fmt.Printf("Chunked receive failed: %s\n", err)
+		}
+
 	default:
 		fmt.Printf("Unknown command: %s\n", command)
 		printUsage()
@@ -101,4 +156,8 @@ func printUsage() {
 	fmt.Println("  discover                  - Find other peers on the LAN")
 	fmt.Println("  send <file> <hostname|all> - Send a file to a specific peer or to all peers")
 	fmt.Println("  recv [port]               - Listen for incoming files (default port: 8080)")
+	fmt.Println("  test-quic-recv [port]     - Test QUIC receiver (default port: 8080)")
+	fmt.Println("  test-quic-send <address>  - Test QUIC sender to <address>")
+	fmt.Println("  send-chunked <file> <addr> - Send file using new chunked protocol")
+	fmt.Println("  recv-chunked [port]       - Receive file using new chunked protocol")
 }

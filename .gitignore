@@ -1,32 +1,112 @@
 # Go build output
 /builds/
 *.exe
-*.out
-*.bin
+*.exe~
 *.dll
 *.so
 *.dylib
+*.test
+*.out
 
-# OS generated files
-.DS_Store
-Thumbs.db
+# Go specific
+*.modbackup
+go.work
+go.work.sum
+vendor/
 
-# Editor/IDE files
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool, specifically when used with LiteIDE
+*.out
+
+# Dependency directories (remove the comment below to include it)
+# vendor/
+
+# Go workspace file
+go.work
+
+# IDE/Editor files
 .vscode/
 .idea/
 *.swp
 *.swo
+*~
+.DS_Store
+Thumbs.db
 
-# Dependency directories (if used)
-vendor/
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
 
 # Logs
 *.log
+logs/
 
 # Temporary files
 *.tmp
 *.temp
+*.bak
+*.backup
 
-# Others
+# Project specific
 landrop_downloads/
+uploads/
+downloads/
+testing/
 
+# Coverage files
+coverage.txt
+coverage.out
+coverage.html
+
+# Profiling files
+*.prof
+*.pprof
+cpu.prof
+mem.prof
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Debug files
+debug
+debug.test
+
+# Air live reload
+.air.toml
+tmp/
+
+# Documentation build
+docs/_build/
+
+# Test files (keep test directory structure but ignore test artifacts)
+testing/*.received
+testing/*.sent
+
+# Binary executables
+landrop
+landrop.exe
+main
+main.exe
+
+# Performance benchmark results
+benchmark.txt
+benchmark.out
+*.bench
+
+# Claude AI specific
+.claude/
+
+# Other
+*.orig
+*.rej
+*.patch
+.diff

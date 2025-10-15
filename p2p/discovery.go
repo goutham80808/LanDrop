@@ -85,7 +85,7 @@ func ListenForDiscovery(tcpPort string) {
 	}
 	conn, err := net.ListenUDP("udp", addr)
 	if err != nil {
-		fmt.Printf("Error listening for discovery packets: %s\n", err)
+		// Silently ignore port conflicts - discovery is optional
 		return
 	}
 	defer conn.Close()

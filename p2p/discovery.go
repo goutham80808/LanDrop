@@ -8,10 +8,6 @@ import (
 	"time"
 )
 
-const DiscoveryPort = 8888
-const DiscoveryMsg = "LANDROP_DISCOVERY"
-const ReplyTimeout = 2 * time.Second
-
 // Peer represents a discovered peer on the network.
 type Peer struct {
 	Hostname string `json:"hostname"`
@@ -50,7 +46,8 @@ func DiscoverPeers() map[string]Peer {
 	}
 
 	peers := make(map[string]Peer)
-	buffer := make([]byte, 1024)
+	buffer := DiscoveryBufferPool.Get()
+	defer DiscoveryBufferPool.Put(buffer)
 
 	// Set a deadline to stop listening for replies
 	conn.SetReadDeadline(time.Now().Add(ReplyTimeout))
@@ -91,7 +88,8 @@ func ListenForDiscovery(tcpPort string) {
 	defer conn.Close()
 
 	hostname, _ := os.Hostname()
-	buffer := make([]byte, 1024)
+	buffer := DiscoveryBufferPool.Get()
+	defer DiscoveryBufferPool.Put(buffer)
 
 	for {
 		n, remoteAddr, err := conn.ReadFromUDP(buffer)
@@ -115,7 +113,7 @@ func ListenForDiscovery(tcpPort string) {
 func getLocalIP() string {
 	conn, err := net.Dial("udp", "8.8.8.8:80")
 	if err != nil {
-		return "127.0.0.1" // Fallback
+		return "127.0.0.1" // Fallback to localhost
 	}
 	defer conn.Close()
 

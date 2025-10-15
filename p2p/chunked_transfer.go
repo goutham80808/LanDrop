@@ -18,15 +18,7 @@ import (
 	"github.com/quic-go/quic-go"
 )
 
-const DefaultChunkSize = int64(32 * 1024 * 1024) // 32MB chunks for optimal performance
-const MaxRetries = 3 // Maximum number of retry attempts for failed chunks
-const MaxConcurrentChunks = 3 // Reduced concurrent chunks to avoid overwhelming QUIC
-const StreamTimeout = 30 * time.Second // Timeout for individual stream operations
-const ConnectionKeepalive = 15 * time.Second // Keepalive interval
 
-// Global buffer for chunk transfers to avoid repeated allocations
-// Use 32KB buffer that divides evenly into 1MB chunks (1024KB / 32KB = 32)
-var chunkBuffer = make([]byte, 32*1024) // 32KB buffer
 
 // createStreamContext creates a context with timeout for stream operations
 func createStreamContext(parentCtx context.Context) (context.Context, context.CancelFunc) {
@@ -49,9 +41,16 @@ func sendChunkWithRetry(ctx context.Context, conn quic.Connection, file *os.File
 			continue
 		}
 
-		// Read chunk data from file
-		chunkData := make([]byte, size)
-		bytesRead, err := io.ReadFull(file, chunkData)
+		// Read chunk data from file using buffer pool for large chunks
+		var chunkData []byte
+		if size <= ChunkBufferSize {
+			chunkData = ChunkBufferPool.Get()
+			defer ChunkBufferPool.Put(chunkData)
+		} else {
+			chunkData = make([]byte, size)
+		}
+
+		bytesRead, err := io.ReadFull(file, chunkData[:size])
 		if err != nil {
 			lastErr = fmt.Errorf("failed to read chunk %d from file: %w", chunkIndex, err)
 			continue
@@ -203,20 +202,17 @@ func SendFileChunked(filename string, peerAddr string) error {
 	chunkSize := DefaultChunkSize
 	totalChunks := (fileInfo.Size() + chunkSize - 1) / chunkSize
 
-	fmt.Printf("Preparing to send '%s' (%.2f MB, %d chunks) to %s\n", 
-		fileInfo.Name(), 
-		float64(fileInfo.Size())/(1024*1024), 
-		totalChunks, 
+	fmt.Printf("Preparing to send '%s' (%.2f MB, %d chunks) to %s\n",
+		fileInfo.Name(),
+		float64(fileInfo.Size())/(1024*1024),
+		totalChunks,
 		peerAddr)
 
 	// Initialize transfer statistics
 	stats := NewTransferStats(fileInfo.Name(), fileInfo.Size(), int(totalChunks), peerAddr, "sent")
 
-	// Create insecure TLS config for client
-	tlsConfig, err := createInsecureTLSConfig()
-	if err != nil {
-		return fmt.Errorf("failed to create TLS config: %w", err)
-	}
+	// Get client TLS config
+	tlsConfig := GetClientTLSConfig()
 
 	// Dial QUIC connection
 	conn, err := quic.DialAddr(ctx, peerAddr, tlsConfig, nil)
@@ -338,21 +334,21 @@ func SendFileChunked(filename string, peerAddr string) error {
 	time.Sleep(100 * time.Millisecond)
 
 	fmt.Printf("\nTransfer completed successfully!\n")
-	
+
 	// Mark transfer as completed and print final statistics
 	stats.MarkCompleted()
 	fmt.Println() // New line after progress
 	stats.PrintSummary()
-	
+
 	return nil
 }
 
 // ReceiveFileChunked receives a file using the new chunked QUIC protocol
 func ReceiveFileChunked(port string) error {
-	// Generate TLS config for server
-	tlsConfig, err := generateTLSConfig()
-	if err != nil {
-		return fmt.Errorf("failed to generate TLS config: %w", err)
+	// Get server TLS config
+	tlsConfig := GetServerTLSConfig()
+	if tlsConfig == nil {
+		return fmt.Errorf("failed to get server TLS config")
 	}
 
 	// Create UDP listener
@@ -416,15 +412,15 @@ func ReceiveFileChunked(port string) error {
 		return fmt.Errorf("failed to deserialize transfer request: %w", err)
 	}
 
-	fmt.Printf("Received transfer request for '%s' (%.2f MB)\n", 
-		request.Filename, 
+	fmt.Printf("Received transfer request for '%s' (%.2f MB)\n",
+		request.Filename,
 		float64(request.FileSize)/(1024*1024))
 
 	// Prompt user for confirmation
 	accepted, rejectionMsg := promptForTransferConfirmation(request)
-	
+
 	response := NewTransferResponse(accepted, getRequiredChunks(request.Filename, request.FileSize, request.ChunkSize), rejectionMsg)
-	
+
 	// Initialize transfer statistics
 	peerAddr := conn.RemoteAddr().String()
 	totalChunks := int((request.FileSize + request.ChunkSize - 1) / request.ChunkSize)
@@ -525,7 +521,7 @@ func ReceiveFileChunked(port string) error {
 	// Verify file integrity
 	fmt.Println("Verifying file integrity...")
 	outputFile.Close() // Close before reading for hash verification
-	
+
 	if verifyFileIntegrity(outputFilename, request.FileHash) {
 		// Mark transfer as completed and print final statistics
 		stats.MarkCompleted()
@@ -605,18 +601,18 @@ func promptForTransferConfirmation(request *TransferRequest) (bool, string) {
 	fmt.Printf("Size: %.2f MB\n", float64(request.FileSize)/(1024*1024))
 	fmt.Printf("Hash: %s\n", request.FileHash)
 	fmt.Println("--------------------------------")
-	
+
 	reader := bufio.NewReader(os.Stdin)
 	fmt.Print("Accept this transfer? (yes/no): ")
-	
+
 	response, err := reader.ReadString('\n')
 	if err != nil {
 		fmt.Printf("Error reading response: %v\n", err)
 		return false, "Error reading user response"
 	}
-	
+
 	response = strings.TrimSpace(strings.ToLower(response))
-	
+
 	switch response {
 	case "yes", "y":
 		fmt.Println("Transfer accepted.")

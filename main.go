@@ -1,4 +1,4 @@
-// main.go
+// LanDrop - Peer-to-peer file transfer over LAN
 package main
 
 import (
@@ -8,7 +8,21 @@ import (
 	"sync"
 )
 
-const DefaultPort = "8080"
+// DefaultPort is kept for backward compatibility
+const (
+	DefaultPort = "8080"
+)
+
+var (
+	// Commands that should skip peer discovery
+	skipDiscoveryCommands = map[string]bool{
+		"discover":       true,
+		"send-chunked":   true,
+		"recv-chunked":   true,
+		"test-quic-send": true,
+		"test-quic-recv": true,
+	}
+)
 
 func main() {
 	if len(os.Args) < 2 {
@@ -16,148 +30,194 @@ func main() {
 		return
 	}
 
-	// Every peer should be discoverable, so we start the listener
-	// for all commands except 'discover' and test commands.
-	// We run it in the background so it doesn't block other commands.
-	// Skip discovery for chunked commands to avoid port conflicts
-	shouldSkipDiscovery := len(os.Args) > 1 && (
-		os.Args[1] == "discover" || 
-		os.Args[1] == "send-chunked" || 
-		os.Args[1] == "recv-chunked" ||
-		os.Args[1] == "test-quic-send" ||
-		os.Args[1] == "test-quic-recv")
-	
-	if !shouldSkipDiscovery {
-		go p2p.ListenForDiscovery(DefaultPort)
-	}
-
 	command := os.Args[1]
 
-	switch command {
-	case "discover":
-		peers := p2p.DiscoverPeers()
-		if len(peers) == 0 {
-			fmt.Println("No other peers found on the network.")
-			return
-		}
-		fmt.Println("Available peers:")
-		for _, peer := range peers {
-			fmt.Printf("  - %s (%s)\n", peer.Hostname, peer.IP)
-		}
+	// Initialize TLS configuration
+	if err := p2p.InitializeTLS(); err != nil {
+		fmt.Printf("Warning: Failed to initialize TLS configuration: %v\n", err)
+	}
 
-	case "send":
-		if len(os.Args) != 4 {
-			fmt.Println("Usage: landrop send <filename> <peer-hostname|all>")
-			return
-		}
-		filename := os.Args[2]
-		target := os.Args[3]
+	// Start peer discovery listener for applicable commands
+	if !shouldSkipDiscovery(command) {
+		go p2p.ListenForDiscovery(p2p.DefaultPort)
+	}
 
-		fmt.Println("Finding peers...")
-		peers := p2p.DiscoverPeers()
-		if len(peers) == 0 {
-			fmt.Println("No peers found to send to.")
-			return
-		}
-
-		if target == "all" {
-			fmt.Printf("Preparing to broadcast '%s' to %d peers.\n", filename, len(peers))
-			// Use a WaitGroup to wait for all transfers to complete.
-			var wg sync.WaitGroup
-			for _, peer := range peers {
-				wg.Add(1) // Increment the WaitGroup counter.
-				// Launch a new goroutine for each transfer.
-				go func(p p2p.Peer) {
-					defer wg.Done() // Decrement the counter when the goroutine completes.
-					fmt.Printf("\n--- Starting transfer to %s ---\n", p.Hostname)
-					p2p.SendFile(filename, p.IP)
-				}(peer)
-			}
-			wg.Wait() // Block until all goroutines have called Done().
-			fmt.Println("\n--- All broadcast transfers complete. ---")
-		} else {
-			// Sending to a single, named peer.
-			peer, exists := peers[target]
-			if !exists {
-				fmt.Printf("Error: Peer '%s' not found. Run 'landrop discover' to see available peers.\n", target)
-				return
-			}
-			p2p.SendFile(filename, peer.IP)
-		}
-
-	case "recv":
-		var port string
-		if len(os.Args) > 2 {
-			port = os.Args[2]
-		} else {
-			port = DefaultPort
-		}
-		// The discovery listener is already running from the top of main().
-		fmt.Printf("Starting receiver on TCP port %s\n", port)
-		fmt.Println("This machine is now discoverable by other peers.")
-		p2p.ReceiveFile(port)
-
-	case "test-quic-send":
-		if len(os.Args) != 3 {
-			fmt.Println("Usage: landrop test-quic-send <peer-address>")
-			return
-		}
-		peerAddr := os.Args[2]
-		err := p2p.SendQUICMessage(peerAddr, "Hello, QUIC!")
-		if err != nil {
-			fmt.Printf("QUIC send failed: %s\n", err)
-		}
-
-	case "test-quic-recv":
-		var port string
-		if len(os.Args) > 2 {
-			port = os.Args[2]
-		} else {
-			port = DefaultPort
-		}
-		err := p2p.ReceiveQUICMessage(port)
-		if err != nil {
-			fmt.Printf("QUIC receive failed: %s\n", err)
-		}
-
-	case "send-chunked":
-		if len(os.Args) != 4 {
-			fmt.Println("Usage: landrop send-chunked <filename> <peer-address>")
-			return
-		}
-		filename := os.Args[2]
-		peerAddr := os.Args[3]
-		err := p2p.SendFileChunked(filename, peerAddr)
-		if err != nil {
-			fmt.Printf("Chunked send failed: %s\n", err)
-		}
-
-	case "recv-chunked":
-		var port string
-		if len(os.Args) > 2 {
-			port = os.Args[2]
-		} else {
-			port = DefaultPort
-		}
-		err := p2p.ReceiveFileChunked(port)
-		if err != nil {
-			fmt.Printf("Chunked receive failed: %s\n", err)
-		}
-
-	default:
-		fmt.Printf("Unknown command: %s\n", command)
-		printUsage()
+	// Route command to appropriate handler
+	if err := handleCommand(command); err != nil {
+		fmt.Printf("Error: %v\n", err)
+		os.Exit(1)
 	}
 }
 
+// shouldSkipDiscovery determines if peer discovery should be skipped for a command
+func shouldSkipDiscovery(command string) bool {
+	return skipDiscoveryCommands[command]
+}
+
+// handleCommand routes the command to the appropriate handler
+func handleCommand(command string) error {
+	switch command {
+	case "discover":
+		return handleDiscover()
+	case "send":
+		return handleSend()
+	case "recv":
+		return handleRecv()
+	case "test-quic-send":
+		return handleQUICSend()
+	case "test-quic-recv":
+		return handleQUICRecv()
+	case "send-chunked":
+		return handleChunkedSend()
+	case "recv-chunked":
+		return handleChunkedRecv()
+	default:
+		return fmt.Errorf("unknown command: %s", command)
+	}
+}
+
+// handleDiscover discovers and displays available peers on the network
+func handleDiscover() error {
+	peers := p2p.DiscoverPeers()
+	if len(peers) == 0 {
+		fmt.Println("No other peers found on the network.")
+		return nil
+	}
+
+	fmt.Println("Available peers:")
+	for _, peer := range peers {
+		fmt.Printf("  - %s (%s)\n", peer.Hostname, peer.IP)
+	}
+	return nil
+}
+
+// handleSend handles file sending to peers
+func handleSend() error {
+	if len(os.Args) != 4 {
+		return fmt.Errorf("usage: landrop send <filename> <peer-hostname|all>")
+	}
+
+	filename := os.Args[2]
+	target := os.Args[3]
+
+	fmt.Println("Finding peers...")
+	peers := p2p.DiscoverPeers()
+	if len(peers) == 0 {
+		return fmt.Errorf("no peers found to send to")
+	}
+
+	if target == "all" {
+		return sendToAllPeers(filename, peers)
+	}
+
+	return sendToSinglePeer(filename, target, peers)
+}
+
+// sendToAllPeers broadcasts a file to all discovered peers
+func sendToAllPeers(filename string, peers map[string]p2p.Peer) error {
+	fmt.Printf("Preparing to broadcast '%s' to %d peers.\n", filename, len(peers))
+
+	var wg sync.WaitGroup
+	for _, peer := range peers {
+		wg.Add(1)
+		go func(peer p2p.Peer) {
+			defer wg.Done()
+			fmt.Printf("\n--- Starting transfer to %s ---\n", peer.Hostname)
+			p2p.SendFile(filename, peer.IP)
+		}(peer)
+	}
+
+	wg.Wait()
+	fmt.Println("\n--- All broadcast transfers complete. ---")
+	return nil
+}
+
+// sendToSinglePeer sends a file to a specific peer
+func sendToSinglePeer(filename, target string, peers map[string]p2p.Peer) error {
+	peer, exists := peers[target]
+	if !exists {
+		return fmt.Errorf("peer '%s' not found. Run 'landrop discover' to see available peers", target)
+	}
+
+	p2p.SendFile(filename, peer.IP)
+	return nil
+}
+
+// handleRecv handles file receiving
+func handleRecv() error {
+	port := getPortFromArgs(2)
+	fmt.Printf("Starting receiver on TCP port %s\n", port)
+	fmt.Println("This machine is now discoverable by other peers.")
+	p2p.ReceiveFile(port)
+	return nil
+}
+
+// handleQUICSend handles QUIC message sending for testing
+func handleQUICSend() error {
+	if len(os.Args) != 3 {
+		return fmt.Errorf("usage: landrop test-quic-send <peer-address>")
+	}
+
+	peerAddr := os.Args[2]
+	if err := p2p.SendQUICMessage(peerAddr, "Hello, QUIC!"); err != nil {
+		return fmt.Errorf("QUIC send failed: %w", err)
+	}
+
+	return nil
+}
+
+// handleQUICRecv handles QUIC message receiving for testing
+func handleQUICRecv() error {
+	port := getPortFromArgs(2)
+	if err := p2p.ReceiveQUICMessage(port); err != nil {
+		return fmt.Errorf("QUIC receive failed: %w", err)
+	}
+	return nil
+}
+
+// handleChunkedSend handles chunked file sending
+func handleChunkedSend() error {
+	if len(os.Args) != 4 {
+		return fmt.Errorf("usage: landrop send-chunked <filename> <peer-address>")
+	}
+
+	filename := os.Args[2]
+	peerAddr := os.Args[3]
+
+	if err := p2p.SendFileChunked(filename, peerAddr); err != nil {
+		return fmt.Errorf("chunked send failed: %w", err)
+	}
+
+	return nil
+}
+
+// handleChunkedRecv handles chunked file receiving
+func handleChunkedRecv() error {
+	port := getPortFromArgs(2)
+	if err := p2p.ReceiveFileChunked(port); err != nil {
+		return fmt.Errorf("chunked receive failed: %w", err)
+	}
+	return nil
+}
+
+// getPortFromArgs extracts port from command line arguments, returns default if not provided
+func getPortFromArgs(argIndex int) string {
+	if len(os.Args) > argIndex {
+		return os.Args[argIndex]
+	}
+	return p2p.DefaultPort
+}
+
+// printUsage displays the application usage information
 func printUsage() {
-	fmt.Println("Usage: landrop <command> [options]")
+	fmt.Println("LanDrop - Peer-to-peer file transfer over LAN")
+	fmt.Println("\nUsage: landrop <command> [options]")
 	fmt.Println("\nCommands:")
-	fmt.Println("  discover                  - Find other peers on the LAN")
-	fmt.Println("  send <file> <hostname|all> - Send a file to a specific peer or to all peers")
-	fmt.Println("  recv [port]               - Listen for incoming files (default port: 8080)")
-	fmt.Println("  test-quic-recv [port]     - Test QUIC receiver (default port: 8080)")
-	fmt.Println("  test-quic-send <address>  - Test QUIC sender to <address>")
-	fmt.Println("  send-chunked <file> <addr> - Send file using new chunked protocol")
-	fmt.Println("  recv-chunked [port]       - Receive file using new chunked protocol")
+	fmt.Println("  discover                  Find other peers on the LAN")
+	fmt.Println("  send <file> <hostname|all> Send a file to a specific peer or to all peers")
+	fmt.Println("  recv [port]               Listen for incoming files (default port: 8080)")
+	fmt.Println("  test-quic-recv [port]     Test QUIC receiver (default port: 8080)")
+	fmt.Println("  test-quic-send <address>  Test QUIC sender to <address>")
+	fmt.Println("  send-chunked <file> <addr> Send file using new chunked protocol")
+	fmt.Println("  recv-chunked [port]       Receive file using new chunked protocol")
 }

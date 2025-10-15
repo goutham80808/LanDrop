@@ -13,8 +13,8 @@ type MessageType string
 const (
 	MessageTransferRequest  MessageType = "TRANSFER_REQUEST"
 	MessageTransferResponse MessageType = "TRANSFER_RESPONSE"
-	MessageChunkData       MessageType = "CHUNK_DATA"
-	MessageChunkAck        MessageType = "CHUNK_ACK"
+	MessageChunkData        MessageType = "CHUNK_DATA"
+	MessageChunkAck         MessageType = "CHUNK_ACK"
 )
 
 // TransferRequest is sent from client to server to initiate a file transfer
@@ -28,10 +28,10 @@ type TransferRequest struct {
 
 // TransferResponse is sent from server to client to acknowledge a transfer request
 type TransferResponse struct {
-	Type          MessageType `json:"type"`
-	Accepted      bool        `json:"accepted"`
-	ResumeChunks  []int       `json:"resume_chunks,omitempty"`
-	RejectionMsg  string      `json:"rejection_msg,omitempty"`
+	Type         MessageType `json:"type"`
+	Accepted     bool        `json:"accepted"`
+	ResumeChunks []int       `json:"resume_chunks,omitempty"`
+	RejectionMsg string      `json:"rejection_msg,omitempty"`
 }
 
 // ProtocolMessage represents any protocol message
@@ -55,11 +55,11 @@ func DeserializeTransferRequest(data []byte) (*TransferRequest, error) {
 	if err := json.Unmarshal(data, &req); err != nil {
 		return nil, fmt.Errorf("failed to deserialize transfer request: %w", err)
 	}
-	
+
 	if req.Type != MessageTransferRequest {
 		return nil, fmt.Errorf("invalid message type: expected %s, got %s", MessageTransferRequest, req.Type)
 	}
-	
+
 	return &req, nil
 }
 
@@ -69,11 +69,11 @@ func DeserializeTransferResponse(data []byte) (*TransferResponse, error) {
 	if err := json.Unmarshal(data, &resp); err != nil {
 		return nil, fmt.Errorf("failed to deserialize transfer response: %w", err)
 	}
-	
+
 	if resp.Type != MessageTransferResponse {
 		return nil, fmt.Errorf("invalid message type: expected %s, got %s", MessageTransferResponse, resp.Type)
 	}
-	
+
 	return &resp, nil
 }
 
@@ -91,20 +91,20 @@ func NewTransferRequest(filename string, fileSize int64, fileHash string, chunkS
 // NewTransferResponse creates a new transfer response message
 func NewTransferResponse(accepted bool, resumeChunks []int, rejectionMsg string) *TransferResponse {
 	return &TransferResponse{
-		Type:          MessageTransferResponse,
-		Accepted:      accepted,
-		ResumeChunks:  resumeChunks,
-		RejectionMsg:  rejectionMsg,
+		Type:         MessageTransferResponse,
+		Accepted:     accepted,
+		ResumeChunks: resumeChunks,
+		RejectionMsg: rejectionMsg,
 	}
 }
 
 // ChunkData represents a chunk of file data with metadata
 type ChunkData struct {
-	Type      MessageType `json:"type"`
-	ChunkIndex int       `json:"chunk_index"`
-	ChunkSize int       `json:"chunk_size"`
-	Data      []byte    `json:"data"`
-	Checksum string     `json:"checksum"`
+	Type       MessageType `json:"type"`
+	ChunkIndex int         `json:"chunk_index"`
+	ChunkSize  int         `json:"chunk_size"`
+	Data       []byte      `json:"data"`
+	Checksum   string      `json:"checksum"`
 }
 
 // ChunkAck represents acknowledgment of a received chunk

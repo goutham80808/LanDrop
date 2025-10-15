@@ -46,7 +46,7 @@ func (ts *TransferStats) MarkCompleted() {
 	ts.EndTime = time.Now()
 	ts.Duration = ts.EndTime.Sub(ts.StartTime)
 	ts.Status = "completed"
-	
+
 	// Calculate average speed in MB/s
 	if ts.Duration.Seconds() > 0 {
 		bytesTransferred := float64(ts.FileSize)
@@ -106,26 +106,26 @@ func (ts *TransferStats) PrintSummary() {
 	fmt.Println("\n" + strings.Repeat("=", 60))
 	fmt.Printf("📊 TRANSFER SUMMARY - %s\n", ts.getDirectionEmoji())
 	fmt.Println(strings.Repeat("=", 60))
-	
+
 	fmt.Printf("📁 File:           %s\n", ts.Filename)
 	fmt.Printf("📦 Size:           %.2f MB\n", float64(ts.FileSize)/(1024*1024))
 	fmt.Printf("🔢 Chunks:         %d total", ts.TotalChunks)
-	
+
 	if ts.TransferDirection == "sent" {
 		fmt.Printf(" (%d sent)\n", ts.SentChunks)
 	} else {
 		fmt.Printf(" (%d received)\n", ts.ReceivedChunks)
 	}
-	
+
 	fmt.Printf("🌐 Peer:           %s\n", ts.PeerAddress)
 	fmt.Printf("⏱️  Duration:       %.2f seconds\n", ts.Duration.Seconds())
 	fmt.Printf("🚀 Average Speed:  %.2f MB/s\n", ts.AverageSpeed)
 	fmt.Printf("✅ Status:         %s\n", ts.getStatusEmoji()+" "+ts.Status)
-	
+
 	if ts.ChunksRetried > 0 {
 		fmt.Printf("🔄 Retries:        %d chunks retried (%d total attempts)\n", ts.ChunksRetried, ts.TotalRetries)
 	}
-	
+
 	fmt.Println(strings.Repeat("=", 60))
 }
 
@@ -155,21 +155,21 @@ func (ts *TransferStats) getStatusEmoji() string {
 func (ts *TransferStats) PrintProgress() {
 	progress := ts.GetProgressPercentage()
 	elapsed := time.Since(ts.StartTime)
-	
+
 	// Calculate current speed (rough estimate)
 	if ts.TransferDirection == "sent" && ts.SentChunks > 0 {
 		avgChunkSize := float64(ts.FileSize) / float64(ts.TotalChunks)
 		bytesTransferred := float64(ts.SentChunks) * avgChunkSize
 		currentSpeed := bytesTransferred / elapsed.Seconds() / (1024 * 1024)
-		
-		fmt.Printf("\r📊 Progress: %.1f%% (%d/%d chunks) | 🚀 %.2f MB/s | ⏱️ %.1fs", 
+
+		fmt.Printf("\r📊 Progress: %.1f%% (%d/%d chunks) | 🚀 %.2f MB/s | ⏱️ %.1fs",
 			progress, ts.SentChunks, ts.TotalChunks, currentSpeed, elapsed.Seconds())
 	} else if ts.ReceivedChunks > 0 {
 		avgChunkSize := float64(ts.FileSize) / float64(ts.TotalChunks)
 		bytesTransferred := float64(ts.ReceivedChunks) * avgChunkSize
 		currentSpeed := bytesTransferred / elapsed.Seconds() / (1024 * 1024)
-		
-		fmt.Printf("\r📊 Progress: %.1f%% (%d/%d chunks) | 🚀 %.2f MB/s | ⏱️ %.1fs", 
+
+		fmt.Printf("\r📊 Progress: %.1f%% (%d/%d chunks) | 🚀 %.2f MB/s | ⏱️ %.1fs",
 			progress, ts.ReceivedChunks, ts.TotalChunks, currentSpeed, elapsed.Seconds())
 	}
 }

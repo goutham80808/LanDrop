@@ -2,96 +2,23 @@ package p2p
 
 import (
 	"context"
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
-	"crypto/tls"
-	"crypto/x509"
-	"crypto/x509/pkix"
-	"encoding/pem"
 	"fmt"
 	"io"
-	"math/big"
 	"net"
 	"time"
 
 	"github.com/quic-go/quic-go"
 )
 
-// generateTLSConfig creates a self-signed certificate for QUIC connections
-func generateTLSConfig() (*tls.Config, error) {
-	// Generate private key
-	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		return nil, err
-	}
 
-	// Create certificate template
-	notBefore := time.Now()
-	notAfter := notBefore.Add(365 * 24 * time.Hour) // 1 year
-
-	serialNumber, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
-	if err != nil {
-		return nil, err
-	}
-
-	template := x509.Certificate{
-		SerialNumber: serialNumber,
-		Subject: pkix.Name{
-			Organization: []string{"LanDrop"},
-		},
-		NotBefore:             notBefore,
-		NotAfter:              notAfter,
-		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
-		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-		BasicConstraintsValid: true,
-		IPAddresses:           []net.IP{net.ParseIP("127.0.0.1")},
-	}
-
-	// Generate certificate
-	derBytes, err := x509.CreateCertificate(rand.Reader, &template, &template, &priv.PublicKey, priv)
-	if err != nil {
-		return nil, err
-	}
-
-	// Create PEM blocks
-	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: derBytes})
-	privBytes, err := x509.MarshalPKCS8PrivateKey(priv)
-	if err != nil {
-		return nil, err
-	}
-	privPEM := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: privBytes})
-
-	// Load certificate and key
-	cert, err := tls.X509KeyPair(certPEM, privPEM)
-	if err != nil {
-		return nil, err
-	}
-
-	return &tls.Config{
-		Certificates: []tls.Certificate{cert},
-		NextProtos:   []string{"landrop"},
-	}, nil
-}
-
-// createInsecureTLSConfig creates a TLS config that trusts self-signed certificates for testing
-func createInsecureTLSConfig() (*tls.Config, error) {
-	return &tls.Config{
-		InsecureSkipVerify: true,
-		NextProtos:         []string{"landrop"},
-	}, nil
-}
 
 // SendQUICMessage sends a simple message over QUIC for testing the protocol foundation
 func SendQUICMessage(peerAddr, message string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	// Create insecure TLS config for client (trusts self-signed certs)
-	tlsConfig, err := createInsecureTLSConfig()
-	if err != nil {
-		return fmt.Errorf("failed to create TLS config: %w", err)
-	}
+	// Get client TLS config
+	tlsConfig := GetClientTLSConfig()
 
 	// Dial QUIC connection
 	conn, err := quic.DialAddr(ctx, peerAddr, tlsConfig, nil)
@@ -119,10 +46,10 @@ func SendQUICMessage(peerAddr, message string) error {
 
 // ReceiveQUICMessage listens for a QUIC connection and receives a message
 func ReceiveQUICMessage(port string) error {
-	// Generate TLS config for server
-	tlsConfig, err := generateTLSConfig()
-	if err != nil {
-		return fmt.Errorf("failed to generate TLS config: %w", err)
+	// Get server TLS config
+	tlsConfig := GetServerTLSConfig()
+	if tlsConfig == nil {
+		return fmt.Errorf("failed to get server TLS config")
 	}
 
 	// Create UDP listener

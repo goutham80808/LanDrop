@@ -21,7 +21,8 @@
 
 ### 🌟 Core Features
 - **Serverless P2P Architecture:** Every device is both a client and a server
-- **Automatic Peer Discovery:** No need to manually find and type IP addresses. Peers are discovered automatically on the local network
+- **Device Name Support:** Use memorable hostnames like `DESKTOP-JOHN` instead of IP addresses
+- **Automatic Peer Discovery:** Devices are discovered automatically with friendly computer names
 - **Cross-Platform:** A single Go codebase compiles to native executables for Windows, macOS, and Linux
 - **Broadcast Transfers:** Send a file to all available peers on the network with a single command (`send <file> all`)
 - **Chunked Transfers:** Intelligent chunking strategy for optimal performance on large files
@@ -81,8 +82,14 @@ LanDrop v2.0 operates on a completely re-engineered decentralized architecture. 
 # Start high-performance receiver
 landrop recv-chunked
 
-# Send file using optimized chunked protocol
+# Send file using optimized chunked protocol with device name
+landrop send-chunked <filename> <device-hostname>
+
+# Send file using optimized chunked protocol with IP address
 landrop send-chunked <filename> <peer-address>
+
+# Send to all discovered peers
+landrop send-chunked <filename> all
 
 # Test QUIC connectivity
 landrop test-quic-recv [port]
@@ -130,17 +137,42 @@ landrop discover
 
 3. **Send files** using the new chunked protocol:
 ```bash
-# Send to a specific peer
+# Send to a specific peer using device name (recommended)
+landrop send-chunked <filename> <device-hostname>
+
+# Send to a specific peer using IP address
 landrop send-chunked <filename> <peer-address>
 
-# Or send to all discovered peers (legacy)
-landrop send <filename> all
+# Send to all discovered peers
+landrop send-chunked <filename> all
 ```
 
 ### Network Requirements
 - **Same Network**: Both devices must be on the same LAN/Wi-Fi network
 - **Firewall**: Ensure ports 8080 (TCP/UDP) and 8888 (UDP) are not blocked
 - **Discovery**: UDP broadcasts must be allowed on the network
+
+### 🏷️ Enhanced Device Name Support
+Version 2.0 now supports human-readable device names for both protocols:
+
+```bash
+# Discover available devices with friendly names
+landrop discover
+# Output: GOUTHAM-808 (192.168.1.10:8080), LAPTOP-ALICE (192.168.1.15:8080)
+
+# Send using memorable device names (no IP addresses needed!)
+landrop send-chunked report.pdf GOUTHAM-808
+landrop send video.mp4 LAPTOP-ALICE
+
+# Legacy protocol also supports device names
+landrop send document.docx all
+```
+
+**Benefits:**
+- **No More IP Memorization**: Use device names like `DESKTOP-JOHN` instead of `192.168.1.10:8080`
+- **Enhanced UX**: Friendly, human-readable interface for all transfers
+- **Automatic Discovery**: Devices appear with their computer names automatically
+- **Broadcast Support**: Send to all peers with a simple `all` command
 
 ### Troubleshooting Cross-Computer Issues
 If LanDrop works on the same computer but not between different computers:

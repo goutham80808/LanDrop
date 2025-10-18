@@ -18,7 +18,6 @@ var (
 	// Commands that should skip peer discovery
 	skipDiscoveryCommands = map[string]bool{
 		"discover":       true,
-		"send-chunked":   true,
 		"recv-chunked":   true,  // Skip global discovery - we start it manually in the function
 		"test-quic-send": true,
 		"test-quic-recv": true,
@@ -181,17 +180,23 @@ func handleQUICRecv() error {
 // handleChunkedSend handles chunked file sending
 func handleChunkedSend() error {
 	if len(os.Args) != 4 {
-		return fmt.Errorf("usage: landrop send-chunked <filename> <peer-address>")
+		return fmt.Errorf("usage: landrop send-chunked <filename> <peer-hostname|peer-address|all>")
 	}
 
 	filename := os.Args[2]
-	peerAddr := os.Args[3]
+	target := os.Args[3]
 
-	if err := p2p.SendFileChunked(filename, peerAddr); err != nil {
-		return fmt.Errorf("chunked send failed: %w", err)
+	fmt.Println("Finding peers...")
+	peers := p2p.DiscoverPeers()
+	if len(peers) == 0 {
+		return fmt.Errorf("no peers found to send to")
 	}
 
-	return nil
+	if target == "all" {
+		return sendToAllPeersChunked(filename, peers)
+	}
+
+	return sendToSinglePeerChunked(filename, target, peers)
 }
 
 // handleChunkedRecv handles chunked file receiving
@@ -239,7 +244,40 @@ func handleDeviceInfo() error {
 	return nil
 }
 
+// sendToAllPeersChunked broadcasts a file to all discovered peers using chunked protocol
+func sendToAllPeersChunked(filename string, peers map[string]p2p.Peer) error {
+	fmt.Printf("Preparing to broadcast '%s' to %d peers using chunked protocol.\n", filename, len(peers))
 
+	var wg sync.WaitGroup
+	for _, peer := range peers {
+		wg.Add(1)
+		go func(peer p2p.Peer) {
+			defer wg.Done()
+			fmt.Printf("\n--- Starting chunked transfer to %s ---\n", peer.Hostname)
+			if err := p2p.SendFileChunked(filename, peer.IP); err != nil {
+				fmt.Printf("Error sending to %s: %v\n", peer.Hostname, err)
+			}
+		}(peer)
+	}
+
+	wg.Wait()
+	fmt.Println("\n--- All chunked broadcast transfers complete. ---")
+	return nil
+}
+
+// sendToSinglePeerChunked sends a file to a specific peer using chunked protocol
+func sendToSinglePeerChunked(filename, target string, peers map[string]p2p.Peer) error {
+	peer, exists := peers[target]
+	if !exists {
+		return fmt.Errorf("peer '%s' not found. Run 'landrop discover' to see available peers", target)
+	}
+
+	if err := p2p.SendFileChunked(filename, peer.IP); err != nil {
+		return fmt.Errorf("chunked send failed: %w", err)
+	}
+
+	return nil
+}
 
 // printUsage displays the application usage information
 func printUsage() {
@@ -251,7 +289,7 @@ func printUsage() {
 	fmt.Println("  recv [port]               Listen for incoming files (default port: 8080)")
 	fmt.Println("  test-quic-recv [port]     Test QUIC receiver (default port: 8080)")
 	fmt.Println("  test-quic-send <address>  Test QUIC sender to <address>")
-	fmt.Println("  send-chunked <file> <addr> Send file using new chunked protocol")
+	fmt.Println("  send-chunked <file> <hostname|all> Send file using new chunked protocol")
 	fmt.Println("  recv-chunked [port]       Receive file using new chunked protocol")
 	fmt.Println("  device-info               Display device security information")
 	fmt.Println("\n🔐 Security Features:")

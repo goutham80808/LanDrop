@@ -317,12 +317,13 @@ func SendFileChunked(filename string, peerAddr string) error {
 
 		// Increment sent chunks and print progress
 		stats.IncrementSentChunks()
+		stats.UpdateBytesTransferred(int64(offset + remaining))
 		stats.PrintProgress()
 
 		// Optimize transfer speed consistency with adaptive pacing
 		if (i+1)%50 == 0 {
-			fmt.Printf("\n🔄 Connection health check at chunk %d/%d", i+1, len(response.ResumeChunks))
-			time.Sleep(50 * time.Millisecond) // Reduced pause for better throughput
+			// Reduced pause for better throughput
+			time.Sleep(50 * time.Millisecond)
 		} else if (i+1)%10 == 0 {
 			// Very brief pause every 10 chunks to allow system I/O to stabilize
 			time.Sleep(2 * time.Millisecond)
@@ -333,7 +334,9 @@ func SendFileChunked(filename string, peerAddr string) error {
 	// Give the receiver time to process the last chunk
 	time.Sleep(100 * time.Millisecond)
 
-	fmt.Printf("\nTransfer completed successfully!\n")
+	// Clear the progress line and print completion message
+	fmt.Printf("\r%s", strings.Repeat(" ", 80)) // Clear the line
+	fmt.Printf("\rTransfer completed successfully!\n")
 
 	// Mark transfer as completed and print final statistics
 	stats.MarkCompleted()
@@ -345,6 +348,9 @@ func SendFileChunked(filename string, peerAddr string) error {
 
 // ReceiveFileChunked receives a file using the new chunked QUIC protocol
 func ReceiveFileChunked(port string) error {
+	// Start discovery listener in background with the correct port
+	go ListenForDiscovery(port)
+	
 	// Get server TLS config
 	tlsConfig := GetServerTLSConfig()
 	if tlsConfig == nil {
@@ -503,12 +509,13 @@ func ReceiveFileChunked(port string) error {
 
 		// Increment received chunks and print progress
 		stats.IncrementReceivedChunks()
+		stats.UpdateBytesTransferred(offset + int64(len(receivedChunk.Data)))
 		stats.PrintProgress()
 
 		// Optimize receiver speed with adaptive pacing
 		if (i+1)%50 == 0 {
-			fmt.Printf("\n🔄 Connection health check at chunk %d/%d", i+1, len(response.ResumeChunks))
-			time.Sleep(50 * time.Millisecond) // Reduced pause for better throughput
+			// Reduced pause for better throughput
+			time.Sleep(50 * time.Millisecond)
 		} else if (i+1)%10 == 0 {
 			// Very brief pause every 10 chunks to allow system I/O to stabilize
 			time.Sleep(2 * time.Millisecond)
@@ -516,7 +523,9 @@ func ReceiveFileChunked(port string) error {
 		// No delay for other chunks to maintain consistent speed
 	}
 
-	fmt.Printf("\nFile transfer completed: %s\n", outputFilename)
+	// Clear the progress line and print completion message
+	fmt.Printf("\r%s", strings.Repeat(" ", 80)) // Clear the line
+	fmt.Printf("\rFile transfer completed: %s\n", outputFilename)
 
 	// Verify file integrity
 	fmt.Println("Verifying file integrity...")

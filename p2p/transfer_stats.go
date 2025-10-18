@@ -22,10 +22,19 @@ type TransferStats struct {
 	Status            string // "completed", "failed", "rejected"
 	ChunksRetried     int    // Number of chunks that required retries
 	TotalRetries      int    // Total number of retry attempts
+
+	// Progress tracking for enhanced UI
+	progressTracker   *ProgressTracker
+	quiet             bool     // Disable output for testing
+	lastProgressTime  time.Time
+	bytesTransferred  int64    // Actual bytes transferred
 }
 
 // NewTransferStats creates a new transfer stats instance
 func NewTransferStats(filename string, fileSize int64, totalChunks int, peerAddress string, direction string) *TransferStats {
+	// Create progress tracker with simple style for compact real-time display
+	progressTracker := NewProgressTracker(filename, fileSize, totalChunks, direction, ProgressStyleSimple)
+
 	return &TransferStats{
 		Filename:          filename,
 		FileSize:          fileSize,
@@ -38,6 +47,10 @@ func NewTransferStats(filename string, fileSize int64, totalChunks int, peerAddr
 		Status:            "in_progress",
 		ChunksRetried:     0,
 		TotalRetries:      0,
+		progressTracker:   progressTracker,
+		quiet:             false,
+		lastProgressTime:  time.Now(),
+		bytesTransferred:  0,
 	}
 }
 
@@ -103,30 +116,36 @@ func (ts *TransferStats) GetProgressPercentage() float64 {
 
 // PrintSummary prints a detailed summary of the transfer
 func (ts *TransferStats) PrintSummary() {
-	fmt.Println("\n" + strings.Repeat("=", 60))
-	fmt.Printf("📊 TRANSFER SUMMARY - %s\n", ts.getDirectionEmoji())
-	fmt.Println(strings.Repeat("=", 60))
-
-	fmt.Printf("📁 File:           %s\n", ts.Filename)
-	fmt.Printf("📦 Size:           %.2f MB\n", float64(ts.FileSize)/(1024*1024))
-	fmt.Printf("🔢 Chunks:         %d total", ts.TotalChunks)
-
-	if ts.TransferDirection == "sent" {
-		fmt.Printf(" (%d sent)\n", ts.SentChunks)
+	if ts.progressTracker != nil {
+		// Use the beautiful progress tracker summary
+		ts.progressTracker.PrintSummary(ts.Status, "")
 	} else {
-		fmt.Printf(" (%d received)\n", ts.ReceivedChunks)
+		// Fallback to basic summary
+		fmt.Println("\n" + strings.Repeat("=", 60))
+		fmt.Printf("📊 TRANSFER SUMMARY - %s\n", ts.getDirectionEmoji())
+		fmt.Println(strings.Repeat("=", 60))
+
+		fmt.Printf("📁 File:           %s\n", ts.Filename)
+		fmt.Printf("📦 Size:           %.2f MB\n", float64(ts.FileSize)/(1024*1024))
+		fmt.Printf("🔢 Chunks:         %d total", ts.TotalChunks)
+
+		if ts.TransferDirection == "sent" {
+			fmt.Printf(" (%d sent)\n", ts.SentChunks)
+		} else {
+			fmt.Printf(" (%d received)\n", ts.ReceivedChunks)
+		}
+
+		fmt.Printf("🌐 Peer:           %s\n", ts.PeerAddress)
+		fmt.Printf("⏱️  Duration:       %.2f seconds\n", ts.Duration.Seconds())
+		fmt.Printf("🚀 Average Speed:  %.2f MB/s\n", ts.AverageSpeed)
+		fmt.Printf("✅ Status:         %s\n", ts.getStatusEmoji()+" "+ts.Status)
+
+		if ts.ChunksRetried > 0 {
+			fmt.Printf("🔄 Retries:        %d chunks retried (%d total attempts)\n", ts.ChunksRetried, ts.TotalRetries)
+		}
+
+		fmt.Println(strings.Repeat("=", 60))
 	}
-
-	fmt.Printf("🌐 Peer:           %s\n", ts.PeerAddress)
-	fmt.Printf("⏱️  Duration:       %.2f seconds\n", ts.Duration.Seconds())
-	fmt.Printf("🚀 Average Speed:  %.2f MB/s\n", ts.AverageSpeed)
-	fmt.Printf("✅ Status:         %s\n", ts.getStatusEmoji()+" "+ts.Status)
-
-	if ts.ChunksRetried > 0 {
-		fmt.Printf("🔄 Retries:        %d chunks retried (%d total attempts)\n", ts.ChunksRetried, ts.TotalRetries)
-	}
-
-	fmt.Println(strings.Repeat("=", 60))
 }
 
 // getDirectionEmoji returns appropriate emoji for transfer direction
@@ -151,25 +170,42 @@ func (ts *TransferStats) getStatusEmoji() string {
 	}
 }
 
-// PrintProgress prints current progress with stats
+// PrintProgress prints current progress with enhanced UI
 func (ts *TransferStats) PrintProgress() {
-	progress := ts.GetProgressPercentage()
-	elapsed := time.Since(ts.StartTime)
-
-	// Calculate current speed (rough estimate)
-	if ts.TransferDirection == "sent" && ts.SentChunks > 0 {
-		avgChunkSize := float64(ts.FileSize) / float64(ts.TotalChunks)
-		bytesTransferred := float64(ts.SentChunks) * avgChunkSize
-		currentSpeed := bytesTransferred / elapsed.Seconds() / (1024 * 1024)
-
-		fmt.Printf("\r📊 Progress: %.1f%% (%d/%d chunks) | 🚀 %.2f MB/s | ⏱️ %.1fs",
-			progress, ts.SentChunks, ts.TotalChunks, currentSpeed, elapsed.Seconds())
-	} else if ts.ReceivedChunks > 0 {
-		avgChunkSize := float64(ts.FileSize) / float64(ts.TotalChunks)
-		bytesTransferred := float64(ts.ReceivedChunks) * avgChunkSize
-		currentSpeed := bytesTransferred / elapsed.Seconds() / (1024 * 1024)
-
-		fmt.Printf("\r📊 Progress: %.1f%% (%d/%d chunks) | 🚀 %.2f MB/s | ⏱️ %.1fs",
-			progress, ts.ReceivedChunks, ts.TotalChunks, currentSpeed, elapsed.Seconds())
+	if ts.quiet || ts.progressTracker == nil {
+		return
 	}
+
+	// Throttle progress updates to avoid flickering
+	now := time.Now()
+	if now.Sub(ts.lastProgressTime) < 100*time.Millisecond {
+		return
+	}
+	ts.lastProgressTime = now
+
+	completedChunks := ts.SentChunks
+	if ts.TransferDirection == "received" {
+		completedChunks = ts.ReceivedChunks
+	}
+
+	// Use the progress tracker for beautiful output
+	ts.progressTracker.PrintProgress(completedChunks, ts.bytesTransferred)
+}
+
+// SetQuiet disables progress output
+func (ts *TransferStats) SetQuiet(quiet bool) {
+	ts.quiet = quiet
+	if ts.progressTracker != nil {
+		ts.progressTracker.SetQuiet(quiet)
+	}
+}
+
+// UpdateBytesTransferred updates the actual bytes transferred
+func (ts *TransferStats) UpdateBytesTransferred(bytes int64) {
+	ts.bytesTransferred = bytes
+}
+
+// GetProgressTracker returns the internal progress tracker
+func (ts *TransferStats) GetProgressTracker() *ProgressTracker {
+	return ts.progressTracker
 }

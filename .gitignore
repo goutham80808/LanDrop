@@ -101,12 +101,19 @@ main.exe
 benchmark.txt
 benchmark.out
 *.bench
+landrop_rearchitecture.md
+
 
 # Claude AI specific
 .claude/
+CLAUDE.md
 
 # Other
 *.orig
 *.rej
 *.patch
 .diff
+docs/
+.markdownlint.json
+.github/workflows/docs-validation.yml
+

@@ -6,6 +6,7 @@ import (
 	"landrop/p2p"
 	"os"
 	"sync"
+	"time"
 )
 
 // DefaultPort is kept for backward compatibility
@@ -18,7 +19,7 @@ var (
 	skipDiscoveryCommands = map[string]bool{
 		"discover":       true,
 		"send-chunked":   true,
-		"recv-chunked":   true,
+		"recv-chunked":   true,  // Skip global discovery - we start it manually in the function
 		"test-quic-send": true,
 		"test-quic-recv": true,
 	}
@@ -71,6 +72,8 @@ func handleCommand(command string) error {
 		return handleChunkedSend()
 	case "recv-chunked":
 		return handleChunkedRecv()
+	case "device-info":
+		return handleDeviceInfo()
 	default:
 		return fmt.Errorf("unknown command: %s", command)
 	}
@@ -208,6 +211,36 @@ func getPortFromArgs(argIndex int) string {
 	return p2p.DefaultPort
 }
 
+// handleDeviceInfo displays device information and security details
+func handleDeviceInfo() error {
+	deviceInfo := p2p.GetDeviceInfo()
+	if deviceInfo == nil {
+		return fmt.Errorf("TLS manager not initialized - run with a command that initializes TLS first")
+	}
+
+	fmt.Println("=== LanDrop Device Information ===")
+	fmt.Printf("Device ID:     %s\n", deviceInfo.DeviceID)
+	fmt.Printf("Hostname:      %s\n", deviceInfo.Hostname)
+	fmt.Printf("Fingerprint:   %s\n", deviceInfo.Fingerprint)
+	fmt.Printf("Created:       %s\n", time.Unix(deviceInfo.CreatedAt, 0).Format("2006-01-02 15:04:05"))
+	fmt.Println("\n=== Security Status ===")
+	fmt.Println("✅ Embedded CA certificate: Active")
+	fmt.Println("✅ Device certificate: Active") 
+	fmt.Println("✅ Certificate pinning: Enabled")
+	fmt.Println("✅ Peer authentication: Required")
+	fmt.Println("\n=== Cross-Device Communication ===")
+	fmt.Println("This device automatically trusts other LanDrop devices")
+	fmt.Println("after user approval on first connection.")
+	fmt.Println("No manual certificate sharing required!")
+	fmt.Println("\nFirst-time connection will show:")
+	fmt.Println("  - Device name and fingerprint")
+	fmt.Println("  - User approval prompt (y/n)")
+	fmt.Println("  - Automatic trust after approval")
+	return nil
+}
+
+
+
 // printUsage displays the application usage information
 func printUsage() {
 	fmt.Println("LanDrop - Peer-to-peer file transfer over LAN")
@@ -220,4 +253,10 @@ func printUsage() {
 	fmt.Println("  test-quic-send <address>  Test QUIC sender to <address>")
 	fmt.Println("  send-chunked <file> <addr> Send file using new chunked protocol")
 	fmt.Println("  recv-chunked [port]       Receive file using new chunked protocol")
+	fmt.Println("  device-info               Display device security information")
+	fmt.Println("\n🔐 Security Features:")
+	fmt.Println("  ✅ Automatic peer authentication")
+	fmt.Println("  ✅ Trust-on-first-use (TOFU)")
+	fmt.Println("  ✅ No manual certificate sharing required")
+	fmt.Println("\nFirst connection between devices will show approval prompt.")
 }

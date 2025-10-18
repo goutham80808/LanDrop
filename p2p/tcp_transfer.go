@@ -127,6 +127,9 @@ func SendFile(filename string, peerAddr string) {
 
 // ReceiveFile handles listening and receiving a file with resume capability.
 func ReceiveFile(port string) {
+	// Start discovery listener in background
+	go ListenForDiscovery(port)
+	
 	listener, err := net.Listen("tcp", ":"+port)
 	if err != nil {
 		fmt.Printf("Error listening on port %s: %s\n", port, err)

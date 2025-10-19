@@ -370,6 +370,318 @@ type TransferWorker struct {
 
 ---
 
+## Phase 5: WebRTC Cross-Network Discovery 🌐 **NEW PHASE**
+
+### 5.1: WebRTC Foundation and Signaling Server ✅ **PLANNED**
+
+**Objective**: Enable LANDrop to detect and transfer files to devices beyond the same WiFi network using WebRTC technology.
+
+**Technical Requirements:**
+- **Pion WebRTC Library**: Integrate pure Go WebRTC implementation (`github.com/pion/webrtc/v4`)
+- **Signaling Server**: Implement WebSocket-based signaling for peer connection establishment
+- **STUN/TURN Support**: Configure public STUN servers and optional TURN servers for NAT traversal
+- **ICE Gathering**: Implement Interactive Connectivity Establishment for optimal connection paths
+
+**Implementation Architecture:**
+```go
+// WebRTC Peer Manager
+type WebRTCPeerManager struct {
+    PeerConnection   *webrtc.PeerConnection
+    DataChannel      *webrtc.DataChannel
+    SignalingClient  *SignalingClient
+    LocalDeviceID    string
+    RemotePeers      map[string]*RemotePeer
+    ConnectionState  webrtc.ICEConnectionState
+}
+
+// Signaling Protocol
+type SignalingMessage struct {
+    Type      string                 `json:"type"` // "offer", "answer", "ice-candidate"
+    DeviceID  string                 `json:"device_id"`
+    Data      map[string]interface{} `json:"data"`
+    Timestamp int64                  `json:"timestamp"`
+}
+
+// Remote Peer Information
+type RemotePeer struct {
+    DeviceID      string    `json:"device_id"`
+    Hostname      string    `json:"hostname"`
+    ConnectionID  string    `json:"connection_id"`
+    LastSeen      time.Time `json:"last_seen"`
+    IsReachable   bool      `json:"is_reachable"`
+    WebRTCReady   bool      `json:"webrtc_ready"`
+}
+```
+
+**Key Integration Points:**
+- Extend existing `p2p/discovery.go` with WebRTC discovery capabilities
+- Add WebRTC transport alongside existing TCP/QUIC protocols
+- Maintain current TLS security model with WebRTC's built-in encryption
+- Leverage existing chunked transfer protocol over WebRTC data channels
+
+### 5.2: Hybrid Discovery System 🔍 **PLANNED**
+
+**Objective**: Create a unified discovery system that seamlessly combines LAN and cross-network capabilities.
+
+**Hybrid Discovery Flow:**
+1. **LAN Discovery First**: Use existing UDP broadcast discovery for local network
+2. **WebRTC Fallback**: If no LAN peers found, attempt WebRTC discovery
+3. **Unified Peer List**: Present all discoverable devices in single interface
+4. **Smart Routing**: Choose optimal transport (LAN vs WebRTC) based on network topology
+
+**Implementation Details:**
+```go
+// Enhanced Discovery Manager
+type HybridDiscoveryManager struct {
+    LANDiscovery  *LANDiscoveryService
+    WebRTCDiscovery *WebRTCDiscoveryService
+    UnifiedPeers   map[string]DiscoveredPeer
+    Config         *DiscoveryConfig
+}
+
+// Unified Peer Representation
+type DiscoveredPeer struct {
+    DeviceID     string    `json:"device_id"`
+    Hostname     string    `json:"hostname"`
+    IPAddress    string    `json:"ip_address,omitempty"`
+    ConnectionType string  `json:"connection_type"` // "lan", "webrtc", "both"
+    LastSeen     time.Time `json:"last_seen"`
+    WebRTCSignals []string `json:"webrtc_signals,omitempty"`
+}
+
+// Discovery Configuration
+type DiscoveryConfig struct {
+    EnableLANDiscovery  bool          `json:"enable_lan"`
+    EnableWebRTCDiscovery bool        `json:"enable_webrtc"`
+    LANDiscoveryTimeout  time.Duration `json:"lan_timeout"`
+    WebRTCTimeout        time.Duration `json:"webrtc_timeout"`
+    PreferredTransport   string        `json:"preferred_transport"`
+}
+```
+
+**Enhanced CLI Commands:**
+- `landrop discover --lan-only`: Traditional LAN discovery only
+- `landrop discover --webrtc-only`: WebRTC discovery only  
+- `landrop discover --hybrid`: Combined discovery (default)
+- `landrop discover --list-all`: Show all discovered peers with connection types
+
+### 5.3: WebRTC Data Channel File Transfer 📁 **PLANNED**
+
+**Objective**: Adapt existing chunked transfer protocol to work over WebRTC data channels.
+
+**WebRTC Transfer Protocol:**
+```go
+// WebRTC Transfer Manager
+type WebRTCTransferManager struct {
+    PeerConnection   *webrtc.PeerConnection
+    DataChannel      *webrtc.DataChannel
+    ChunkManager     *ChunkedTransferManager
+    ProgressTracker  *ProgressTracker
+    TransferSession  *TransferSession
+}
+
+// WebRTC-specific Transfer Message
+type WebRTCTransferMessage struct {
+    MessageType string      `json:"message_type"` // "metadata", "chunk", "ack", "complete"
+    TransferID  string      `json:"transfer_id"`
+    ChunkIndex  int         `json:"chunk_index,omitempty"`
+    Data        []byte      `json:"data,omitempty"`
+    Metadata    interface{} `json:"metadata,omitempty"`
+    Checksum    string      `json:"checksum,omitempty"`
+}
+
+// Data Channel Configuration
+func configureDataChannel() *webrtc.DataChannelInit {
+    return &webrtc.DataChannelInit{
+        Ordered:   func(b bool) *bool { return &b }(true),  // Reliable delivery
+        MaxRetransmits: func(u uint16) *uint16 { return &u }(3), // 3 retries
+        Protocol:  func(s string) *string { return &s }("landrop-v1"),
+    }
+}
+```
+
+**Key Features:**
+- **Chunked Protocol Reuse**: Adapt existing 32MB chunking strategy
+- **Binary Data Transfer**: Use WebRTC data channels for efficient binary transfer
+- **Reliability**: Leverage WebRTC's built-in reliability and congestion control
+- **Progress Tracking**: Port existing progress display to WebRTC transfers
+- **Error Handling**: Implement WebRTC-specific error recovery
+
+### 5.4: Signaling Server Infrastructure 🚀 **PLANNED**
+
+**Objective**: Deploy lightweight signaling server for WebRTC peer connection establishment.
+
+**Signaling Server Options:**
+1. **Self-Hosted**: Simple Go WebSocket server for privacy
+2. **Public STUN**: Use free STUN servers (stun.l.google.com:19302)
+3. **TURN Integration**: Optional TURN server for restrictive networks
+4. **Decentralized**: Future peer-to-peer signaling without central server
+
+**Implementation Details:**
+```go
+// Simple Signaling Server
+type SignalingServer struct {
+    Port        int                    `json:"port"`
+    Hub         *WebSocketHub          `json:"hub"`
+    Peers       map[string]*PeerSession `json:"peers"`
+    RoomManager *RoomManager           `json:"rooms"`
+}
+
+// WebSocket Hub for managing connections
+type WebSocketHub struct {
+    Clients    map[*Client]bool
+    Broadcast  chan []byte
+    Register   chan *Client
+    Unregister chan *Client
+    Rooms      map[string]*Room
+}
+
+// Room for device discovery
+type Room struct {
+    ID      string
+    Peers   map[string]*PeerSession
+    Created time.Time
+}
+
+// Client Configuration
+type ClientConfig struct {
+    SignalingServers []string `json:"signaling_servers"`
+    STUNServers      []string `json:"stun_servers"`
+    TURNServers      []string `json:"turn_servers,omitempty"`
+    AutoConnect      bool     `json:"auto_connect"`
+}
+```
+
+**Deployment Options:**
+- **Development**: Local signaling server on localhost:8081
+- **Production**: Cloud-deployed signaling server (VPS/Cloud Run)
+- **Privacy Mode**: User-deployed personal signaling server
+- **Fallback**: Public STUN servers when signaling unavailable
+
+### 5.5: Testing and Validation Strategy ✅ **PLANNED**
+
+**Comprehensive Test Plan:**
+
+**Phase 5.1 - WebRTC Foundation Tests:**
+- **Unit Tests**: Pion WebRTC integration, ICE gathering, data channel creation
+- **Integration Tests**: Peer connection establishment, signaling message exchange
+- **Network Tests**: Connectivity across different network topologies
+- **Security Tests**: WebRTC encryption, peer authentication
+
+**Phase 5.2 - Hybrid Discovery Tests:**
+- **Discovery Accuracy**: Verify LAN and WebRTC peer detection
+- **Performance Tests**: Discovery latency comparison
+- **Fallback Tests**: Graceful fallback when one discovery method fails
+- **UI Tests**: Unified peer list display and selection
+
+**Phase 5.3 - File Transfer Tests:**
+- **Cross-Network Transfers**: Files between different networks/internet
+- **Large File Tests**: 1GB+ files over WebRTC data channels
+- **Concurrent Transfers**: Multiple simultaneous WebRTC transfers
+- **Reliability Tests**: Network interruption recovery
+
+**Phase 5.4 - End-to-End Scenarios:**
+- **Same Network**: Verify LAN discovery still works optimally
+- **Different Networks**: Cross-network discovery and transfer
+- **Mixed Environments**: Some peers on LAN, others on WebRTC
+- **Edge Cases**: NAT traversal, firewall restrictions, mobile networks
+
+**Manual Testing Scenarios:**
+1. **Home Network**: Devices on same WiFi (should use LAN)
+2. **Office Networks**: Devices on different corporate networks
+3. **Mobile**: Laptop on WiFi, phone on cellular data
+4. **International**: Cross-country file transfers
+5. **Restrictive Networks**: Behind strict firewalls/NAT
+
+**Performance Benchmarks:**
+- **Discovery Speed**: <5 seconds for cross-network peer detection
+- **Connection Establishment**: <10 seconds for WebRTC peer connection
+- **Transfer Speed**: Target >10 MB/s over WebRTC (compared to 22 MB/s LAN)
+- **Reliability**: >99% successful transfer completion rate
+
+### 5.6: Security and Privacy Considerations 🔒 **PLANNED**
+
+**WebRTC Security Model:**
+- **Built-in Encryption**: All WebRTC traffic is DTLS-SRTP encrypted
+- **Peer Authentication**: Leverage existing TLS certificate model
+- **Signaling Security**: Secure WebSocket connections (WSS)
+- **Metadata Privacy**: Minimal information exchange during discovery
+
+**Privacy Features:**
+- **Optional Signaling**: Users can choose signaling server
+- **Device ID Privacy**: Rotate device IDs periodically
+- **Network Information**: Minimal network topology exposure
+- **Local Mode**: Disable WebRTC entirely for LAN-only usage
+
+**Security Implementation:**
+```go
+// WebRTC Security Configuration
+func configureWebRTCSecurity() *webrtc.Configuration {
+    return &webrtc.Configuration{
+       ICEServers: []webrtc.ICEServer{
+            {
+                URLs:       []string{"stun:stun.l.google.com:19302"},
+                Credential: "", // Public STUN - no auth needed
+            },
+        },
+        Certificates: []webrtc.Certificate{
+            // Reuse existing device certificates
+        },
+    }
+}
+
+// Secure Signaling
+type SecureSignalingClient struct {
+    WSSUrl      string
+    DeviceCert  tls.Certificate
+    AuthToken   string
+    EncryptionKey []byte
+}
+```
+
+### 5.7: User Experience Integration 🎨 **PLANNED**
+
+**Enhanced CLI Interface:**
+```bash
+# Enhanced discover command
+landrop discover
+● Available peers (3 found):
+  ○ DESKTOP-ABC123 (192.168.1.100) [LAN] 🚀
+  ○ laptop-xyz789 (webrtc:abc123) [WebRTC] 🌐  
+  ○ phone-def456 (webrtc:def456) [WebRTC] 📱
+
+# Send with automatic transport selection
+landrop send file.zip DESKTOP-ABC123  # Uses LAN
+landrop send file.zip laptop-xyz789   # Uses WebRTC
+landrop send file.zip --all           # Hybrid to all peers
+
+# WebRTC-specific commands
+landrop webrtc-status                 # Show WebRTC connection status
+landrop webrtc-test                   # Test WebRTC connectivity
+```
+
+**Progress Display for WebRTC:**
+- **Connection Indicator**: Show connection type (LAN/WebRTC)
+- **Connection Quality**: Signal strength indicator for WebRTC
+- **Fallback Notifications**: Notify if transport switches between LAN/WebRTC
+- **Error Messages**: Clear WebRTC-specific error information
+
+**Configuration Options:**
+```go
+// WebRTC Configuration
+type WebRTCConfig struct {
+    Enabled           bool          `json:"enabled"`
+    SignalingServer   string        `json:"signaling_server"`
+    STUNServers       []string      `json:"stun_servers"`
+    AutoConnect       bool          `json:"auto_connect"`
+    PreferredTransport string       `json:"preferred_transport"`
+    ConnectionTimeout time.Duration `json:"connection_timeout"`
+    EnableICELogging  bool          `json:"enable_ice_logging"`
+}
+```
+
+---
+
 ## 🎯 Additional Recommendations
 
 ### Performance Optimizations:

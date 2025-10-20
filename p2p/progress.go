@@ -225,7 +225,7 @@ func (pt *ProgressTracker) PrintSummary(status string, errorMessage string) {
 	}
 
 	fmt.Printf("\n\n%s============================================================%s\n", Colors.Bold, Colors.Reset)
-	fmt.Printf("%s📊 TRANSFER SUMMARY - 📤 %s%s\n", Colors.Bold, direction, Colors.Reset)
+	fmt.Printf("%s📊 TRANSFER SUMMARY - 📤 %s %s%s\n", Colors.Bold, direction, Colors.Reset)
 	fmt.Printf("%s============================================================%s\n", Colors.Bold, Colors.Reset)
 	fmt.Printf("📁 File:           %s%s\n", Colors.Yellow, pt.filename, Colors.Reset)
 	fmt.Printf("📦 Size:           %s%.2f MB%s\n", Colors.Yellow, float64(pt.totalSize)/(1024*1024), Colors.Reset)

@@ -201,7 +201,7 @@ func ReceiveFile(port string) {
 	// 6. Verify hash of the completed file.
 	fmt.Println("Verifying integrity...")
 	// We MUST re-open the file in read mode to hash it from the beginning.
-	file.Close()
+	// Note: file.Close() is handled by defer at function exit
 	receivedHash, _ := calculateFileHash(metadata.Filename)
 
 	// 7. Send final ACK/ERR and log results.

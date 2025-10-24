@@ -335,8 +335,8 @@ func SendFileChunked(filename string, peerAddr string) error {
 	time.Sleep(100 * time.Millisecond)
 
 	// Clear the progress line and print completion message
-	fmt.Printf("\r%s", strings.Repeat(" ", 80)) // Clear the line
-	fmt.Printf("\rTransfer completed successfully!\n")
+	fmt.Printf("\r%s\r", strings.Repeat(" ", 120)) // Clear the line with longer width
+	fmt.Printf("Transfer completed successfully!\n")
 
 	// Mark transfer as completed and print final statistics
 	stats.MarkCompleted()
@@ -524,8 +524,8 @@ func ReceiveFileChunked(port string) error {
 	}
 
 	// Clear the progress line and print completion message
-	fmt.Printf("\r%s", strings.Repeat(" ", 80)) // Clear the line
-	fmt.Printf("\rFile transfer completed: %s\n", outputFilename)
+	fmt.Printf("\r%s\r", strings.Repeat(" ", 120)) // Clear the line with longer width
+	fmt.Printf("File transfer completed: %s\n", outputFilename)
 
 	// Verify file integrity
 	fmt.Println("Verifying file integrity...")

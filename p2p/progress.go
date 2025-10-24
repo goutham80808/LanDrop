@@ -126,12 +126,20 @@ func (pt *ProgressTracker) printSimpleProgress(completedChunks int, percentage f
 		speedColor = Colors.Cyan
 	}
 
+	// Limit progress bar width to prevent overflow
+	maxBarWidth := 50
+	barWidth := maxBarWidth
+	if pt.totalChunks < maxBarWidth {
+		barWidth = pt.totalChunks
+	}
+	
 	// Build progress bar: * for completed, spin char for current
 	var progressBar strings.Builder
-	for i := 0; i < pt.totalChunks; i++ {
-		if i < completedChunks {
+	for i := 0; i < barWidth; i++ {
+		chunkIndex := i * pt.totalChunks / barWidth
+		if chunkIndex < completedChunks {
 			progressBar.WriteString("*")
-		} else if i == completedChunks && completedChunks < pt.totalChunks {
+		} else if chunkIndex == completedChunks && completedChunks < pt.totalChunks {
 			spinChars := []string{"|", "/", "-", "\\"}
 			progressBar.WriteString(spinChars[pt.spinIndex])
 			pt.spinIndex = (pt.spinIndex + 1) % len(spinChars)
@@ -151,6 +159,7 @@ func (pt *ProgressTracker) printSimpleProgress(completedChunks int, percentage f
 		direction = "RECV"
 	}
 
+	// Use carriage return to update the same line
 	fmt.Printf("\r%s[%s%s%s] %s %.1f%% | %s%d/%d | 🚀 %s%.2fMB/s | ⏱️ %s%s%s",
 		Colors.Bold,
 		Colors.Cyan,

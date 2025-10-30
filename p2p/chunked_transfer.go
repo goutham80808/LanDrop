@@ -26,7 +26,7 @@ func createStreamContext(parentCtx context.Context) (context.Context, context.Ca
 }
 
 // sendChunkWithRetry sends a single chunk using the reliable protocol
-func sendChunkWithRetry(ctx context.Context, conn quic.Connection, file *os.File, chunkIndex int, offset, size int64) error {
+func sendChunkWithRetry(ctx context.Context, conn quic.Connection, file *os.File, chunkIndex int64, offset, size int64) error {
 	var lastErr error
 
 	for attempt := 0; attempt < MaxRetries; attempt++ {
@@ -77,7 +77,7 @@ func sendChunkWithRetry(ctx context.Context, conn quic.Connection, file *os.File
 }
 
 // sendChunkReliably sends a chunk using fast binary protocol
-func sendChunkReliably(ctx context.Context, conn quic.Connection, chunkIndex int, data []byte) error {
+func sendChunkReliably(ctx context.Context, conn quic.Connection, chunkIndex int64, data []byte) error {
 	// Open stream for this chunk
 	streamCtx, streamCancel := createStreamContext(ctx)
 	chunkStream, err := conn.OpenStreamSync(streamCtx)
@@ -88,14 +88,14 @@ func sendChunkReliably(ctx context.Context, conn quic.Connection, chunkIndex int
 	defer chunkStream.Close()
 	defer streamCancel()
 
-	// Create simple binary header: [chunkIndex(4 bytes)][dataSize(4 bytes)][checksum(32 bytes)]
-	header := make([]byte, 40)
-	binary.BigEndian.PutUint32(header[0:4], uint32(chunkIndex))
-	binary.BigEndian.PutUint32(header[4:8], uint32(len(data)))
+	// Create simple binary header: [chunkIndex(8 bytes)][dataSize(4 bytes)][checksum(32 bytes)]
+	header := make([]byte, 44)
+	binary.BigEndian.PutUint64(header[0:8], uint64(chunkIndex))
+	binary.BigEndian.PutUint32(header[8:12], uint32(len(data)))
 
 	// Calculate SHA-256 checksum
 	hash := sha256.Sum256(data)
-	copy(header[8:40], hash[:])
+	copy(header[12:44], hash[:])
 
 	// Send header
 	_, err = chunkStream.Write(header)
@@ -125,18 +125,18 @@ func sendChunkReliably(ctx context.Context, conn quic.Connection, chunkIndex int
 }
 
 // receiveChunkReliably receives a chunk using fast binary protocol
-func receiveChunkReliably(ctx context.Context, chunkStream quic.Stream, expectedChunkIndex int) (*ChunkData, error) {
-	// Read binary header (40 bytes)
-	header := make([]byte, 40)
+func receiveChunkReliably(ctx context.Context, chunkStream quic.Stream, expectedChunkIndex int64) (*ChunkData, error) {
+	// Read binary header (44 bytes)
+	header := make([]byte, 44)
 	_, err := io.ReadFull(chunkStream, header)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read chunk header: %w", err)
 	}
 
 	// Parse header
-	receivedChunkIndex := int(binary.BigEndian.Uint32(header[0:4]))
-	dataSize := int(binary.BigEndian.Uint32(header[4:8]))
-	receivedChecksum := header[8:40]
+	receivedChunkIndex := int64(binary.BigEndian.Uint64(header[0:8]))
+	dataSize := int(binary.BigEndian.Uint32(header[8:12]))
+	receivedChecksum := header[12:44]
 
 	// Verify chunk index matches expected
 	if receivedChunkIndex != expectedChunkIndex {
@@ -308,7 +308,7 @@ func SendFileChunked(filename string, peerAddr string) error {
 		}
 
 		// Send chunk with retry logic using array index for synchronization
-		err := sendChunkWithRetry(ctx, conn, file, i, offset, remaining)
+		err := sendChunkWithRetry(ctx, conn, file, int64(chunkIndex), offset, remaining)
 		if err != nil {
 			stats.MarkFailed(fmt.Sprintf("failed to send chunk %d: %v", chunkIndex, err))
 			stats.PrintSummary()
@@ -486,7 +486,7 @@ func ReceiveFileChunked(port string) error {
 		streamCancel()
 
 		// Receive chunk reliably using array index for synchronization
-		receivedChunk, err := receiveChunkReliably(ctx, chunkStream, i)
+		receivedChunk, err := receiveChunkReliably(ctx, chunkStream, int64(chunkIndex))
 		if err != nil {
 			stats.MarkFailed(fmt.Sprintf("failed to receive chunk %d: %v", chunkIndex, err))
 			stats.PrintSummary()

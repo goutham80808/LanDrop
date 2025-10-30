@@ -101,7 +101,7 @@ func NewTransferResponse(accepted bool, resumeChunks []int, rejectionMsg string)
 // ChunkData represents a chunk of file data with metadata
 type ChunkData struct {
 	Type       MessageType `json:"type"`
-	ChunkIndex int         `json:"chunk_index"`
+	ChunkIndex int64       `json:"chunk_index"`
 	ChunkSize  int         `json:"chunk_size"`
 	Data       []byte      `json:"data"`
 	Checksum   string      `json:"checksum"`
@@ -110,13 +110,13 @@ type ChunkData struct {
 // ChunkAck represents acknowledgment of a received chunk
 type ChunkAck struct {
 	Type       MessageType `json:"type"`
-	ChunkIndex int         `json:"chunk_index"`
+	ChunkIndex int64       `json:"chunk_index"`
 	Received   bool        `json:"received"`
 	ErrorMsg   string      `json:"error_msg,omitempty"`
 }
 
 // NewChunkData creates a new chunk data message
-func NewChunkData(chunkIndex int, data []byte) *ChunkData {
+func NewChunkData(chunkIndex int64, data []byte) *ChunkData {
 	hash := sha256.Sum256(data)
 	return &ChunkData{
 		Type:       MessageChunkData,
@@ -128,7 +128,7 @@ func NewChunkData(chunkIndex int, data []byte) *ChunkData {
 }
 
 // NewChunkAck creates a new chunk acknowledgment message
-func NewChunkAck(chunkIndex int, received bool, errorMsg string) *ChunkAck {
+func NewChunkAck(chunkIndex int64, received bool, errorMsg string) *ChunkAck {
 	return &ChunkAck{
 		Type:       MessageChunkAck,
 		ChunkIndex: chunkIndex,
